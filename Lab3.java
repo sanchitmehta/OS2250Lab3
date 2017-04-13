@@ -11,26 +11,20 @@ import java.util.*;
 
 public class Lab3 {
 
-    private final String inputFile;
     public static int numTasks;
     public static int numResources;
     int terminatedTasksCount = 0, abortedTasksCount = 0;
-
     List<Task> taskPool;
     List<Resource> resourcePool;
-
     Map<Integer, Integer> releasedResourcesBuffer = new HashMap<>();
     List<Task> blockedBuffer = new ArrayList<>();
-
     List<Task> terminatedTasks = new ArrayList<>();
     List<Task> blockedTasks;
     List<Task> abortedTasks;
     int[][] max;
-    int[][] avail;
 
 
     public Lab3(String filename) throws Exception {
-        this.inputFile = filename;
         for (int i = 1; i < 3; i++) {
             readInput(filename);
             executeCycle(i % 2 == 0);
@@ -42,8 +36,8 @@ public class Lab3 {
     }
 
     /*
-        Clears all the common Buffers and DataStructures when
-        FIFO Completes and Banker's algo is being run
+      Clears all the common Buffers and DataStructures when
+      FIFO Completes and Banker's algo is being run
      */
     public void clearBuffer() {
         blockedBuffer.clear();
@@ -72,14 +66,13 @@ public class Lab3 {
         this.abortedTasks = new ArrayList<>();
 
         max = new int[this.numResources][this.numTasks];
-        avail = new int[this.numTasks][this.numResources];
 
         for (int i = 0; i < this.numTasks; i++)
             taskPool.add(new Task(i));
         for (int i = 0; i < this.numResources; i++) {
             int rCount = sc.nextInt();
+            //Adding this Resource to resource pool
             resourcePool.add(new Resource(rCount));
-            avail[0][i] = rCount;
         }
 
         while (sc.hasNext()) {
@@ -111,14 +104,14 @@ public class Lab3 {
     }
 
     /*
-        Executes a cycle for all the tasks, gives preference to Blocked
-        tasks first.
+      Executes a cycle for all the tasks, gives preference to Blocked
+      tasks first.
     */
     public void executeCycle(boolean isBankers) {
         //initiate all the tasks
         while (this.abortedTasksCount + this.terminatedTasksCount != this.taskPool.size()) { //all the tasks must either be aborted or completed.
 
-            // Cheking for Deadlock for FIFO implementation
+            // Checking for Deadlock for FIFO implementation
             // kills a task in FIFO order if there is a deadlock
             if (!isBankers) {
                 if (blockedTasks.size() + abortedTasks.size() + terminatedTasks.size() == this.taskPool.size()) {
@@ -142,6 +135,9 @@ public class Lab3 {
         }
     }
 
+    /*
+      Runs all the activities by all the task in a cycle
+     */
     public void executeTasksActivity(List<Task> Tasks, boolean blockedRun, boolean isBankers) {
 
         //Adding to the Wait Times of each Blocked Taks
@@ -158,6 +154,8 @@ public class Lab3 {
         releasedResourcesBuffer.clear();
 
         for (Task t : Tasks) {
+            //Either a blockedTask list and true blockedRun flag is provided or taskPool list
+            //and false blockedRun flag is provided so taking a XOR
             if (!(blockedRun ^ blockedTasks.contains(t)) && !abortedTasks.contains(t)
                     && !terminatedTasks.contains(t)) {
                 Activity a = t.activities.remove(0);
@@ -202,6 +200,7 @@ public class Lab3 {
                 abortTask(T);
             }
         } else if (requestType == Task.Status.terminate) {
+            //Adding this task to the Terminated Task List
             terminatedTasks.add(T);
             this.terminatedTasksCount++;
         } else if (requestType == Task.Status.request) {
@@ -232,9 +231,12 @@ public class Lab3 {
                         return;
                     }
                 }
-                //Grant the request to that task
+                //Removing the task from Blocked since it gets it's need fulfilled
+                //This task is added to a buffer , so that it becomes availaible not in
+                //this cycle but next cycle
                 if (blockedTasks.contains(T))
                     blockedBuffer.add(T);
+                //Grant the request to that task
                 resourcePool.get(a.resourceType - 1).available -= a.resourceCount;
                 T.allocateResource(a.resourceType - 1, a.resourceCount);
             } else {
@@ -251,6 +253,9 @@ public class Lab3 {
                 T.activities.add(0, a);
         } else if (requestType == Task.Status.release) {
             for (Integer k : T.allocatedResources.keySet()) {
+                //Releasing the resources of this task and adding it
+                //to a buffer so that these resources become availaible in
+                //the next cycle
                 if (k == a.resourceType - 1) {
                     if (releasedResourcesBuffer.get(k) != null)
                         releasedResourcesBuffer.put(k, releasedResourcesBuffer.get(k) + T.allocatedResources.get(k));
@@ -351,6 +356,11 @@ public class Lab3 {
         return true;
     }
 
+    /*
+       Creates an allocation matrix which indicates
+       how much each resource is allocated to a
+       particular task at a particular time
+     */
     private int[][] createAllocationMatrix() {
         int[][] ret = new int[this.numResources][this.numTasks];
         for (int i = 0; i < this.numResources; i++) {
@@ -366,6 +376,11 @@ public class Lab3 {
         return ret;
     }
 
+    /*
+       Creates a need matrix computed using
+       difference of maximum resource claim
+       and current allocation
+     */
     public int[][] createNeedMatrix() {
         int need[][] = new int[this.numResources][this.numTasks];
         int alloc[][] = createAllocationMatrix();
@@ -379,6 +394,7 @@ public class Lab3 {
         return need;
     }
 
+    //The Execution Begins here
     public static void main(String args[]) {
         if (args.length != 1)
             throw new IllegalArgumentException("Exactly 1 argument required : <Input File Name>");
