@@ -14,11 +14,14 @@ public class Lab3 {
     private final String inputFile;
     public static int numTasks;
     public static int numResources;
-    int terminatedTasksCount = 0, time = 0, abortedTasksCount = 0;
+    int terminatedTasksCount = 0, abortedTasksCount = 0;
+
     List<Task> taskPool;
-    List<Resource> resources;
+    List<Resource> resourcePool;
+
     Map<Integer, Integer> releasedResourcesBuffer = new HashMap<>();
     List<Task> blockedBuffer = new ArrayList<>();
+
     List<Task> terminatedTasks = new ArrayList<>();
     List<Task> blockedTasks;
     List<Task> abortedTasks;
@@ -30,7 +33,7 @@ public class Lab3 {
         this.inputFile = filename;
         for (int i = 1; i < 3; i++) {
             readInput(filename);
-            runTasks(i % 2 == 0);
+            executeCycle(i % 2 == 0);
             System.out.println("\n");
             printOutput(i%2==0?"BANKER'S":"FIFO");
             clearBuffer();
@@ -48,16 +51,15 @@ public class Lab3 {
         abortedTasks.clear();
         terminatedTasks.clear();
         releasedResourcesBuffer.clear();
-        resources.clear();
+        resourcePool.clear();
         taskPool.clear();
         terminatedTasksCount = 0;
-        time = 0;
         abortedTasksCount = 0;
     }
 
     /*
-      Reads Input and Creates MaximumDemand and Total Availaible arrays
-      for the Banker's Algorithm
+      Reads Input and Creates MaximumDemand and Total Available arrays
+      for the Banker's Algorithm.
      */
     public void readInput(String fileName) throws Exception {
         File f = new File(fileName);
@@ -65,7 +67,7 @@ public class Lab3 {
         this.numTasks = sc.nextInt();
         this.numResources = sc.nextInt();
         taskPool = new ArrayList<>(this.numTasks);
-        this.resources = new ArrayList<>();
+        this.resourcePool = new ArrayList<>();
         this.blockedTasks = new ArrayList<>();
         this.abortedTasks = new ArrayList<>();
 
@@ -76,7 +78,7 @@ public class Lab3 {
             taskPool.add(new Task(i));
         for (int i = 0; i < this.numResources; i++) {
             int rCount = sc.nextInt();
-            resources.add(new Resource(rCount));
+            resourcePool.add(new Resource(rCount));
             avail[0][i] = rCount;
         }
 
@@ -112,37 +114,49 @@ public class Lab3 {
         Executes a cycle for all the tasks, gives preference to Blocked
         tasks first.
     */
-    public void runTasks(boolean isBankers) {
+    public void executeCycle(boolean isBankers) {
         //initiate all the tasks
         while (this.abortedTasksCount + this.terminatedTasksCount != this.taskPool.size()) { //all the tasks must either be aborted or completed.
-            // kill a task in the beginning if there is a deadlock
+
+            // Cheking for Deadlock for FIFO implementation
+            // kills a task in FIFO order if there is a deadlock
             if (!isBankers) {
                 if (blockedTasks.size() + abortedTasks.size() + terminatedTasks.size() == this.taskPool.size()) {
                     killTasks();
                 }
             }
 
+            //Ensuring that Blocked tasks are run first
             if (!this.blockedTasks.isEmpty()) {
-                executeCycle(this.blockedTasks, true, isBankers);
+                executeTasksActivity(this.blockedTasks, true, isBankers);
             }
-            executeCycle(taskPool, false, isBankers);
+            //Executing rest of the tasks(not in Blocked List)
+            executeTasksActivity(taskPool, false, isBankers);
+
+            // Removing tasks from the Blocked Pool , present in BlockedBuffer
+            // These tasks were added to a a buffer to ensure there is no
+            // Concurrent execution error
             for (Task t : blockedBuffer)
                 blockedTasks.remove(t);
             blockedBuffer.clear();
         }
     }
 
-    public void executeCycle(List<Task> Tasks, boolean blockedRun, boolean isBankers) {
+    public void executeTasksActivity(List<Task> Tasks, boolean blockedRun, boolean isBankers) {
 
+        //Adding to the Wait Times of each Blocked Taks
         if (blockedRun)
             for (Task t : blockedTasks)
                 t.waitTime++;
 
+        //Adding resourcePool to Resources Pool. This resourcePool were released
+        //from Release Activities of Tasks in previous cycle
         for (Integer k : releasedResourcesBuffer.keySet()) {
-            resources.get(k).available += releasedResourcesBuffer.get(k);
+            resourcePool.get(k).available += releasedResourcesBuffer.get(k);
             releasedResourcesBuffer.put(k, 0);
         }
         releasedResourcesBuffer.clear();
+
         for (Task t : Tasks) {
             if (!(blockedRun ^ blockedTasks.contains(t)) && !abortedTasks.contains(t)
                     && !terminatedTasks.contains(t)) {
@@ -170,7 +184,6 @@ public class Lab3 {
                 executeActivity(t, t.currStatus, a, isBankers);
             }
         }
-        time = time + 1; //increment the time
     }
 
     /*
@@ -179,31 +192,38 @@ public class Lab3 {
      */
     public void executeActivity(Task T, Task.Status requestType, Activity a, boolean isBankers) {
         if (requestType == Task.Status.initiate) {
-            //Some Logic Here
-            if (isBankers && max[a.resourceType - 1][T.taskNo] > resources.get(a.resourceType - 1).claim) {
+
+            //Checking a task does not claim for more resources than max avaiable resoures
+            if (isBankers && max[a.resourceType - 1][T.taskNo] > resourcePool.get(a.resourceType - 1).claim) {
                 //abort sequence
+                System.out.println("Banker aborts task "+(T.taskNo+1)+" before run begins:\n" +
+                        "       claim for resourse "+a.resourceType+" ("+a.resourceCount+") exceeds number of units present ("+
+                        resourcePool.get(a.resourceType - 1).claim+")");
                 abortTask(T);
             }
         } else if (requestType == Task.Status.terminate) {
             terminatedTasks.add(T);
             this.terminatedTasksCount++;
         } else if (requestType == Task.Status.request) {
-            if (resources.get(a.resourceType - 1).available >= a.resourceCount) {
+            if (resourcePool.get(a.resourceType - 1).available >= a.resourceCount) {
                 if (isBankers) {
                     //Ensuring A Task does not demands more than it claims
                     int allocRec = T.allocatedResources.get(a.resourceType - 1) == null ? 0 : T.allocatedResources.get(a.resourceType - 1);
                     if (a.resourceCount + allocRec > T.claim) {
                         //abort sequence
                         abortTask(T);
+                        System.out.println("During cycle "+(T.runTime-1)+"-"+(T.runTime)+" of Banker's algorithms\n" +
+                                "   Task "+(T.taskNo+1)+"'s request exceeds its claim; aborted; "+
+                                allocRec+" units available next cycle");
                         return;
                     }
                     int[] avail = new int[numResources];
                     for (int i = 0; i < this.numResources; i++) {
-                        avail[i] = resources.get(i).available;
+                        avail[i] = resourcePool.get(i).available;
                     }
                     int[][] alloc = createAllocationMatrix();
-                    //Checking if grating this resource would not result
-                    // in an unsafe state
+
+                    //Checking for safety
                     if (!isSafe(createNeedMatrix(), avail, T.taskNo)) {
                         T.activities.add(0, a);
                         if (!this.blockedTasks.contains(T)) {
@@ -215,10 +235,10 @@ public class Lab3 {
                 //Grant the request to that task
                 if (blockedTasks.contains(T))
                     blockedBuffer.add(T);
-                resources.get(a.resourceType - 1).available -= a.resourceCount;
+                resourcePool.get(a.resourceType - 1).available -= a.resourceCount;
                 T.allocateResource(a.resourceType - 1, a.resourceCount);
             } else {
-                //The resources requested by this task are currently no availaible,
+                //The resourcePool requested by this task are currently no availaible,
                 //this task is added to blocked tasks pool
                 T.activities.add(0, a);
                 if (!this.blockedTasks.contains(T)) {
@@ -262,13 +282,11 @@ public class Lab3 {
                     (t.waitTime / (double) t.runTime) * 100 + "%"
                     + "\n");
         }
-
         System.out.print("Total \t" + totalRunTime + "\t" + totalWaitTime + "\t" + (totalWaitTime / (double) totalRunTime) * 100 + "%");
-
     }
 
     /*
-        Kills a task in case of a dadlock . Releases it's resources
+        Kills a task in case of a dadlock . Releases it's resourcePool
      */
     public void killTasks() {
         Task t = null;
@@ -284,8 +302,9 @@ public class Lab3 {
     }
 
     /*
-        Helper method for kill task. Also used when
-        to abort a task having invalid claims
+        Helper method for killTasks. Also used when
+        to abort a task having invalid claims. Releases
+        resources and removes the aborted task from blockedPool
      */
     public void abortTask(Task t) {
         abortedTasksCount++;
@@ -295,16 +314,20 @@ public class Lab3 {
 
         //add that resource
         for (Integer resource : t.allocatedResources.keySet()) {
-            resources.get(resource).available += t.allocatedResources.get(resource);
+            resourcePool.get(resource).available += t.allocatedResources.get(resource);
             t.allocatedResources.put(resource, 0);
         }
     }
 
+    /*
+        Helper method for kill task. Returns a boolean for looping over all the tasks
+        ensuring if one of the task' claim can be satisfied for the resources released
+     */
     public boolean canAClaimBeSatisfied() {
         for (Task t : taskPool) {
             if (!isAbortedOrTerminated(t)) {
                 Activity a = t.activities.get(0);
-                boolean isClaimSatisfied = a.resourceCount <= resources.get(a.resourceType - 1).available;
+                boolean isClaimSatisfied = a.resourceCount <= resourcePool.get(a.resourceType - 1).available;
                 if (isClaimSatisfied)
                     return true;
             }
