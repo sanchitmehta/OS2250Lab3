@@ -277,12 +277,13 @@ public class Lab3 {
             }
             totalRunTime += t.runTime;
             totalWaitTime += t.waitTime;
+
             System.out.print("Task " + (t.taskNo + 1) + "\t" + t.runTime + "\t" +
                     t.waitTime + "\t" +
-                    (t.waitTime / (double) t.runTime) * 100 + "%"
+                    (int) Math.round((t.waitTime / (double) t.runTime) * 100) + "%"
                     + "\n");
         }
-        System.out.print("Total \t" + totalRunTime + "\t" + totalWaitTime + "\t" + (totalWaitTime / (double) totalRunTime) * 100 + "%");
+        System.out.print("Total \t" + totalRunTime + "\t" + totalWaitTime + "\t" + (int) Math.round((totalWaitTime /(double)totalRunTime) * 100) + "%");
     }
 
     /*
